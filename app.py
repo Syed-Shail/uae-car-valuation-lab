@@ -32,7 +32,7 @@ h1,h2,h3{font-family:Manrope,sans-serif;letter-spacing:-.04em;color:#000!importa
 .note{padding:13px 16px;background:#eff5e8;border-left:3px solid #9cbd70;color:#000!important;font-size:13px}
 </style>""",unsafe_allow_html=True)
 @st.cache_data
-def load_results(): return json.loads((ART/"results.json").read_text())
+def load_results(version=None): return json.loads((ART/"results.json").read_text())
 @st.cache_data
 def load_data(): return pd.read_csv(DATA,low_memory=False)
 @st.cache_resource
@@ -53,7 +53,7 @@ if not (ART/"results.json").exists() or not (ART/"price_model.cbm").exists():
 try: df=load_data()
 except Exception:
     st.error("Raw source data is missing. Follow data/README.md and run `python fetch_data.py`.");st.stop()
-res=load_results();model=load_model();test=res["test"]["model"]
+res=load_results((ART/"results.json").stat().st_mtime_ns);model=load_model();test=res["test"]["model"]
 st.markdown("<div class='hero'><div class='eyebrow'>FIELD NOTES 01 · UAE USED-CAR MARKET</div><h1>What might this car be listed for?</h1><p>A data-backed estimate from 9,953 UAE vehicle listings. Explore the held-out evaluation, then try a configuration. Estimates describe historical asking prices, not completed sales or today's market.</p></div>",unsafe_allow_html=True)
 st.markdown("<div class='eyebrow'>MODEL SCORE · UNTOUCHED TEST SET</div>",unsafe_allow_html=True)
 c1,c2,c3,c4=st.columns(4)
