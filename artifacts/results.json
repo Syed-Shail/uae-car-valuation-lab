@@ -162,7 +162,8 @@
       "n": 1541,
       "conformal_90_coverage": 0.9214795587280986,
       "conformal_90_radius_aed": 130160.37923811775,
-      "conformal_90_median_width_aed": 260320.7584762355
+      "conformal_90_median_width_aed": 260320.7584762355,
+      "price_band_conformal_90_coverage": 0.9247242050616483
     },
     "mae_improvement_over_baseline": 0.41385101919779743,
     "mae_improvement_aed": 35806.47222608517,
@@ -236,8 +237,46 @@
     }
   },
   "calibration": {
-    "method": "90% split-conformal absolute residual interval calibrated on separate 20% split",
-    "warning": "Marginal coverage applies under exchangeability; it is not a guarantee for individual cars or changed market conditions."
+    "method": "90% split-conformal absolute residual intervals calibrated within model-predicted price bands on a separate 20% split",
+    "global_radius_aed": 130160.37923811775,
+    "predicted_price_band_intervals": {
+      "<=50k": {
+        "radius_aed": 19288.876823293576,
+        "calibration_n": 335,
+        "test_n": 355,
+        "test_coverage": 0.9323943661971831,
+        "interval_source": "price-band calibration set"
+      },
+      "50-100k": {
+        "radius_aed": 39574.5574990881,
+        "calibration_n": 382,
+        "test_n": 412,
+        "test_coverage": 0.9199029126213593,
+        "interval_source": "price-band calibration set"
+      },
+      "100-250k": {
+        "radius_aed": 112336.41750001421,
+        "calibration_n": 497,
+        "test_n": 467,
+        "test_coverage": 0.9336188436830836,
+        "interval_source": "price-band calibration set"
+      },
+      "250-500k": {
+        "radius_aed": 394442.3826299674,
+        "calibration_n": 272,
+        "test_n": 251,
+        "test_coverage": 0.9083665338645418,
+        "interval_source": "price-band calibration set"
+      },
+      ">500k": {
+        "radius_aed": 564612.6062179775,
+        "calibration_n": 55,
+        "test_n": 56,
+        "test_coverage": 0.9107142857142857,
+        "interval_source": "price-band calibration set"
+      }
+    },
+    "warning": "Coverage is calibrated within predicted-price bands on exchangeable data. It is not a guarantee for an individual car or changed market conditions; sparse or expensive-car bands remain uncertain."
   },
   "feature_importance": [
     {
