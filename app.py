@@ -73,7 +73,7 @@ c2.metric("Mean absolute error",f"AED {test['mae_aed']:,.0f}",f"{res['test']['ma
 c3.metric("Median absolute percentage error",f"{test['median_ape']:.1%}")
 c4.metric("Within 20% of asking price",f"{test['within_20pct']:.1%}")
 st.caption(f"Evaluation uses a fixed 20% held-out split ({test['n']:,} listings). The dataset's published analysis identifies asking prices below AED 5,000 as likely incorrect/fake, so those rows are excluded before splitting. Price ranges are calibrated separately by predicted-price band; group coverage is not an individual guarantee.")
-meaning_tab, calculation_tab=st.tabs(["What the statistics mean", "How they were calculated"])
+meaning_tab, calculation_tab, process_tab=st.tabs(["What the statistics mean", "How they were calculated", "Project: start to finish"])
 with meaning_tab:
     st.markdown(f"""
 ### Median absolute error — AED {test['median_ae_aed']:,.0f}
@@ -104,6 +104,49 @@ with calculation_tab:
     st.latex(r"MdAPE = median\left(\frac{|\hat{y}_i-y_i|}{y_i}\right)")
     st.markdown(f"Here, `yᵢ` is positive for every eligible listing. The baseline predicts the fit-set median asking price for the same make and model, falling back to the overall fit-set median when that combination is absent. MAE improvement is `(baseline MAE − model MAE) / baseline MAE`, which is {res['test']['mae_improvement_over_baseline']:.1%} here.")
     st.caption(f"The source snapshot had {res['data']['source_rows']:,} rows. After exact duplicates, {res['data']['below_upstream_price_quality_threshold_rows_removed']:,} rows below the upstream AED {res['data']['upstream_price_quality_threshold_aed']:,} quality threshold, and invalid target/year/mileage rows were removed, {res['data']['eligible_rows']:,} remained. A fixed seed split assigned {res['split']['fit_rows']:,} to model fitting, {res['split']['calibration_rows']:,} to interval calibration, and {res['split']['test_rows']:,} to the final test set. These scores describe historical asking prices in this snapshot, not completed sale prices or today's market.")
+with process_tab:
+    model_info=res["model"]
+    bp=model_info["best_params"]
+    st.markdown("""
+### 1. Define the prediction task
+The target is the **advertised asking price in AED** for a used-car listing. Each row is one listing from a single historical UAE snapshot. This is a supervised regression task: the model learns a numeric price from listing attributes. It does not learn the final sale price, negotiation outcome, or current market value.
+
+### 2. Inspect and prepare the source data
+The project starts with **9,953 rows**. It removes exact duplicate rows and applies the source notebook's stated data-quality rule that prices below AED 5,000 are likely incorrect or fake. It also keeps records with valid price, model year (1950 through the snapshot year), and nonnegative mileage. Missing categorical attributes are represented as `Unknown`; numeric fields are parsed as numbers. After these rules, **7,296 listings** are eligible. The raw CSV is not redistributed with the code because its upstream repository does not give a clear data license.
+
+### 3. Keep model fitting, interval calibration, and final scoring separate
+Using random seed **42**, the cleaned rows are divided into **60% fit**, **20% calibration**, and **20% final test** partitions: {fit_rows:,}, {cal_rows:,}, and {test_rows:,} rows. Inside the fit portion, an **18% validation slice** is used for early stopping and choosing model settings. The calibration rows set the prediction-interval widths. The final test rows estimate performance after those choices. Because the split is random by row, this evaluates interpolation within the snapshot; it is not a future-time test.
+
+### 4. Give the model vehicle and listing attributes
+The model uses {feature_count} input fields: {features}. CatBoost is a gradient-boosted decision-tree model. It builds trees in sequence, with later trees correcting patterns left by earlier ones. CatBoost was selected because it can handle the categorical fields directly, including make, model, trim, body type, and seller type, while also using numeric mileage, year, and specifications.
+
+### 5. Compare six candidate configurations
+Each candidate used CatBoost with at most **1,400 boosting iterations**, validation-based early stopping after **100** rounds without improvement, random seed **42**, and validation **MAE in AED** as the selection criterion. The candidate with the lowest validation MAE was then refit on the full fit partition for the selected number of iterations. The table shows validation results saved by the training run.
+""".format(fit_rows=res["split"]["fit_rows"],cal_rows=res["split"]["calibration_rows"],test_rows=res["split"]["test_rows"],feature_count=len(model_info["features"]),features=", ".join(f"`{f}`" for f in model_info["features"])))
+    candidates=pd.DataFrame(model_info.get("validation_candidates", []))
+    if not candidates.empty:
+        params_df=pd.json_normalize(candidates["params"])
+        candidates_view=pd.concat([candidates[["validation_mae_aed","iterations"]].rename(columns={"validation_mae_aed":"Validation MAE (AED)"}),params_df],axis=1)
+        st.dataframe(candidates_view.style.format({"Validation MAE (AED)":"{:,.0f}","learning_rate":"{:.2f}"}),use_container_width=True,hide_index=True)
+    st.markdown("""
+**Selected configuration:** CatBoostRegressor, **{objective}** loss on **{target_transform}**, depth **{depth}**, learning rate **{learning_rate}**, L2 leaf regularization **{l2}**, and **{iterations:,}** boosting iterations.
+
+- **Depth** controls how many successive feature decisions a tree can make; larger values can model more complex patterns but can overfit.
+- **Learning rate** controls how much each new tree adjusts the current predictions. Lower rates generally require more trees.
+- **L2 leaf regularization** penalizes overly large leaf adjustments to help control overfitting.
+- **RMSE objective** trains on squared errors in the transformed target. The `log1p` transform makes relative price differences matter more than they would on raw AED scale. Predictions are transformed back to AED before evaluation.
+- **Validation MAE** is average absolute error on the validation slice, in AED. The selected setup was the lowest-MAE candidate; it was not chosen by maximizing the within-20% statistic.
+
+The numeric inputs were year, kilometers, doors, seating capacity, and cylinder count. The categorical inputs were make, model, trim, regional specifications, body type, fuel type, transmission, engine capacity, horsepower, exterior/interior colors, warranty, city, and seller type. Vehicle age was left out because it duplicates information in year for this snapshot. Address-level location labels and coordinates were left out because they act like unstable identifiers and may not be available consistently at prediction time.
+
+### 6. Compare with a simple baseline
+The baseline predicts the median fit-set price for the same make and model. If that pair was absent from fit data, it uses the overall fit-set median. This gives a transparent benchmark for whether the feature-rich model adds value. On the held-out test rows, model MAE was **{mae:,.0f} AED** versus **{base_mae:,.0f} AED** for the baseline, a **{improvement:.1%}** reduction.
+
+### 7. Calibrate prediction ranges and evaluate once
+After fitting, absolute calibration-set errors are used to calculate a split-conformal radius for a nominal **90%** range. The app uses separate radii for predicted-price groups (`<=50k`, `50–100k`, `100–250k`, `250–500k`, and `>500k`) when a group has at least 30 calibration examples; smaller groups use the global radius. This is group-level coverage evidence, not a promise for an individual car.
+
+The final test set contains **{n:,}** listings. The deployed model achieved **{within20:.1%} within 20%**, **{mdape:.1%} median absolute percentage error**, **{mape:.1%} mean absolute percentage error**, **AED {mae:,.0f} mean absolute error**, and **R² {r2:.3f}**. The 20% figure means that proportion of held-out asking prices had an absolute percentage error no greater than 20%; it does not mean the model is correct for that percentage of future vehicles. The reported test metrics belong to this saved model and this snapshot.
+""".format(objective=model_info["objective"],target_transform=model_info["target_transform"],depth=bp["depth"],learning_rate=bp["learning_rate"],l2=bp["l2_leaf_reg"],iterations=model_info["iterations"],mae=test["mae_aed"],base_mae=res["baseline"]["mae_aed"],improvement=res["test"]["mae_improvement_over_baseline"],n=test["n"],within20=test["within_20pct"],mdape=test["median_ape"],mape=test["mape"],r2=test["r2"]))
 left,right=st.columns([1,1],gap="large")
 with left:
     st.subheader("Try a vehicle")
@@ -177,14 +220,18 @@ with left:
         st.caption(f"Price band: {band}. Held-out test coverage in this group: {band_info.get('test_coverage',0):.1%} across {band_info.get('test_n',0):,} listings. This is group-level evidence, not a guarantee for this individual car.")
 with right:
     st.subheader("What the snapshot contains")
+    st.caption("Asking-price distribution among eligible listings, clipped at AED 2,000,000 for readability. Each bar groups listings into a price interval; taller bars mean more listings in that interval. The long right tail is why the horizontal scale is dominated by ordinary-price cars.")
     d=df.copy();d["price"]=pd.to_numeric(d.price,errors="coerce")
     d=d[d.price.between(1000,2_000_000)]
     fig=px.histogram(d,x="price",nbins=55,color_discrete_sequence=["#527d64"],labels={"price":"Asking price (AED)","count":"Listings"})
     fig.update_layout(height=285,margin=dict(l=8,r=8,t=15,b=10),paper_bgcolor="#f7f8ef",plot_bgcolor="#ffffff",font_family="DM Sans",font_color="#000000",hoverlabel=dict(bgcolor="#ffffff",bordercolor="#dbe7cf",font_color="#000000"),showlegend=False)
+    fig.update_traces(hovertemplate="Asking price: AED %{x:,.0f}<br>Listings: %{y}<extra></extra>")
     st.plotly_chart(fig,use_container_width=True)
+    st.caption("Top model inputs by CatBoost's feature-importance score. The score summarizes how much the fitted trees used each feature to improve predictions; it is relative within this model, does not show whether a feature raises or lowers price, and does not establish causation. Correlated inputs can share or shift importance.")
     fi=pd.DataFrame(res["feature_importance"][:10]).sort_values("importance")
     fig2=px.bar(fi,x="importance",y="feature",orientation="h",color_discrete_sequence=["#bc7954"],labels={"importance":"Model importance","feature":"Input feature"})
     fig2.update_layout(height=310,margin=dict(l=8,r=8,t=10,b=10),paper_bgcolor="#f7f8ef",plot_bgcolor="#ffffff",font_family="DM Sans",font_color="#000000",hoverlabel=dict(bgcolor="#ffffff",bordercolor="#dbe7cf",font_color="#000000"))
+    fig2.update_traces(hovertemplate="Feature: %{y}<br>Importance: %{x:.2f}<extra></extra>")
     st.plotly_chart(fig2,use_container_width=True)
 st.markdown("<div class='note'><b>How to read this:</b> these are asking prices in a single historical listing snapshot. The dataset has no sale outcomes or collection dates. The random holdout tests interpolation within the snapshot; it does not prove current-market accuracy. Feature importance describes model behavior, not causal effects.</div>",unsafe_allow_html=True)
 with st.expander("Evaluation details and limitations"):
