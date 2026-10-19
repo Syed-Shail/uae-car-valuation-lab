@@ -39,14 +39,21 @@ def load_data(): return pd.read_csv(DATA,low_memory=False)
 def load_model():
     m=CatBoostRegressor();m.load_model(str(ART/"price_model.cbm"));return m
 
-def options_for(rows, column, min_count=1):
-    counts=rows[column].fillna("Unknown").astype(str).value_counts()
-    supported=counts[counts>=min_count]
-    if len(supported):
-        counts=supported
-    elif len(counts):
-        counts=counts.iloc[:1]
-    return sorted(counts.index.astype(str)) if len(counts) else ["Unknown"]
+def category_values(series):
+    """Use the same missing-category labels as the training pipeline."""
+    return series.fillna("Unknown").astype(str).replace({"nan": "Unknown", "None": "Unknown", "": "Unknown"})
+
+def options_for(rows, column):
+    # Keep every value observed under the current parent selections; do not
+    # suppress rare trims or body/fuel/spec combinations with a count cutoff.
+    values=category_values(rows[column]).unique()
+    return sorted(values) if len(values) else ["Unknown"]
+
+def option_counts(rows, column):
+    return category_values(rows[column]).value_counts().to_dict()
+
+def listing_label(counts):
+    return lambda value: f"{value} · {counts.get(value, 0):,} matching listings"
 
 if not (ART/"results.json").exists() or not (ART/"price_model.cbm").exists():
     st.error("Model artifacts are missing. Follow the README setup steps to fetch data and train the model.");st.stop()
@@ -88,43 +95,54 @@ with calculation_tab:
 left,right=st.columns([1,1],gap="large")
 with left:
     st.subheader("Try a vehicle")
-    brands=sorted(df.brand.dropna().astype(str).unique())
-    brand=st.selectbox("Make",brands,index=brands.index("Toyota") if "Toyota" in brands else 0)
-    mdls=sorted(df.loc[df.brand.astype(str)==brand,"model"].dropna().astype(str).unique())
-    mdl=st.selectbox("Model",mdls)
-    example=df[(df.brand.astype(str)==brand)&(df.model.astype(str)==mdl)]
+    brands=sorted(category_values(df.brand).unique())
+    brand_counts=option_counts(df,"brand")
+    brand=st.selectbox("Make",brands,index=brands.index("Toyota") if "Toyota" in brands else 0,
+                       format_func=listing_label(brand_counts),key="make")
+    make_rows=df[category_values(df.brand)==brand]
+    model_counts=option_counts(make_rows,"model")
+    mdls=sorted(category_values(make_rows.model).unique())
+    mdl=st.selectbox("Model",mdls,format_func=listing_label(model_counts),key=f"model::{brand}")
+    example=make_rows[category_values(make_rows.model)==mdl]
     trim_options=options_for(example,"trim")
-    trim=st.selectbox("Trim",trim_options)
-    config=example[example.trim.fillna("Unknown").astype(str)==trim]
-    body_options=options_for(config,"body_type",min_count=3)
-    body=st.selectbox("Body type",body_options)
-    st.caption("Body styles with fewer than three matching listings are treated as likely label noise; if none reach that count, the most common recorded style is shown.")
-    config=config[config.body_type.fillna("Unknown").astype(str)==body]
+    trim_counts=option_counts(example,"trim")
+    trim=st.selectbox("Trim",trim_options,format_func=listing_label(trim_counts),key=f"trim::{brand}::{mdl}")
+    config=example[category_values(example.trim)==trim]
+    body_options=options_for(config,"body_type")
+    body_counts=option_counts(config,"body_type")
+    body=st.selectbox("Body type",body_options,format_func=listing_label(body_counts),key=f"body::{brand}::{mdl}::{trim}")
+    config=config[category_values(config.body_type)==body]
     fuel_options=options_for(config,"fuel_type")
-    fuel=st.selectbox("Fuel type",fuel_options)
-    config=config[config.fuel_type.fillna("Unknown").astype(str)==fuel]
+    fuel_counts=option_counts(config,"fuel_type")
+    fuel=st.selectbox("Fuel type",fuel_options,format_func=listing_label(fuel_counts),key=f"fuel::{brand}::{mdl}::{trim}::{body}")
+    config=config[category_values(config.fuel_type)==fuel]
     trans_options=options_for(config,"transmission_type")
-    trans=st.selectbox("Transmission",trans_options)
-    config=config[config.transmission_type.fillna("Unknown").astype(str)==trans]
+    trans_counts=option_counts(config,"transmission_type")
+    trans=st.selectbox("Transmission",trans_options,format_func=listing_label(trans_counts),key=f"transmission::{brand}::{mdl}::{trim}::{body}::{fuel}")
+    config=config[category_values(config.transmission_type)==trans]
     region_options=options_for(config,"regional_specs")
-    region=st.selectbox("Regional specs",region_options)
-    config=config[config.regional_specs.fillna("Unknown").astype(str)==region]
+    region_counts=option_counts(config,"regional_specs")
+    region=st.selectbox("Regional specs",region_options,format_func=listing_label(region_counts),key=f"region::{brand}::{mdl}::{trim}::{body}::{fuel}::{trans}")
+    config=config[category_values(config.regional_specs)==region]
     # Location is independent of vehicle configuration; keep all source locations available.
     city_name_fixes={"Fujeirah":"Fujairah","Umm Al Qawain":"Umm Al Quwain","Al Ain":"Al Ain (Abu Dhabi Emirate)"}
     city_raw_options=options_for(df,"city")
+    city_counts=option_counts(df,"city")
     city_by_label={city_name_fixes.get(value,value):value for value in city_raw_options}
-    city_label=st.selectbox("Listed city / emirate",sorted(city_by_label))
+    city_label_counts={city_name_fixes.get(value,value):count for value,count in city_counts.items()}
+    city_label=st.selectbox("Listed city / emirate",sorted(city_by_label),format_func=listing_label(city_label_counts),key="listed-city")
     city=city_by_label[city_label]
     seller_options=options_for(config,"seller_type")
-    seller=st.selectbox("Seller type",seller_options)
-    config=config[config.seller_type.fillna("Unknown").astype(str)==seller]
+    seller_counts=option_counts(config,"seller_type")
+    seller=st.selectbox("Seller type",seller_options,format_func=listing_label(seller_counts),key=f"seller::{brand}::{mdl}::{trim}::{body}::{fuel}::{trans}::{region}")
+    config=config[category_values(config.seller_type)==seller]
     default_year=int(example.year.median()) if len(example) else 2019
     default_km=int(example.kilometers.median()) if len(example) else 60000
     year=st.slider("Year",min_value=1990,max_value=int(df.year.max()),value=min(int(df.year.max()),max(1990,default_year)))
     km=st.number_input("Mileage (km)",min_value=0,max_value=1_000_000,value=min(1_000_000,default_km),step=5000)
     if st.button("Estimate asking price",use_container_width=True):
         sample=config.iloc[0] if len(config) else example.iloc[0] if len(example) else df.iloc[0]
-        row={c:str(sample.get(c,"Unknown")) if pd.notna(sample.get(c)) else "Unknown" for c in res["model"]["categorical_features"]}
+        row={c:category_values(pd.Series([sample.get(c,"Unknown")])).iloc[0] for c in res["model"]["categorical_features"]}
         row.update({"brand":brand,"model":mdl,"trim":trim,"city":city,"regional_specs":region,"body_type":body,"fuel_type":fuel,"transmission_type":trans,"seller_type":seller,
                     "year":year,"kilometers":km,"doors":sample.get("doors",4),"seating_capacity":sample.get("seating_capacity",5),"no_of_cylinders":sample.get("no_of_cylinders",4)})
         raw_prediction=float(model.predict(pd.DataFrame([row]))[0])
