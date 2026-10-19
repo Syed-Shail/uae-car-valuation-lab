@@ -86,9 +86,12 @@ with left:
     region_options=options_for(config,"regional_specs")
     region=st.selectbox("Regional specs",region_options)
     config=config[config.regional_specs.fillna("Unknown").astype(str)==region]
-    # Emirate is an independent location choice; retain every location in the source dataset.
-    city_options=options_for(df,"city")
-    city=st.selectbox("Emirate",city_options)
+    # Location is independent of vehicle configuration; keep all source locations available.
+    city_name_fixes={"Fujeirah":"Fujairah","Umm Al Qawain":"Umm Al Quwain","Al Ain":"Al Ain (Abu Dhabi Emirate)"}
+    city_raw_options=options_for(df,"city")
+    city_by_label={city_name_fixes.get(value,value):value for value in city_raw_options}
+    city_label=st.selectbox("Listed city / emirate",sorted(city_by_label))
+    city=city_by_label[city_label]
     seller_options=options_for(config,"seller_type")
     seller=st.selectbox("Seller type",seller_options)
     config=config[config.seller_type.fillna("Unknown").astype(str)==seller]
