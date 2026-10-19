@@ -12,4 +12,6 @@ The project uses a public UAE/Dubizzle used-car listing snapshot distributed in 
 
 The source describes the data as used-car listings in the UAE. It does not provide listing timestamps, sale outcomes, or a collection methodology. The model therefore estimates **asking prices represented in this historical snapshot**, not realized transaction prices or today's market value. Its test score measures prediction on a held-out portion of the same snapshot, not future-market performance.
 
+The upstream notebook's price-cleaning section sets `price_threshold = 5000` and says entries below that level are wrong or fake. This project follows that source-documented screen before splitting the data; the threshold and excluded row count are included in `artifacts/results.json`. See the [upstream analysis notebook](https://github.com/kushal99-AE/UAE-Used-Car-Price-Prediction/blob/main/Car_Price_Prediction.ipynb).
+
 The downloadable file URL points to a mutable `main` branch. After fetching, record the SHA-256 digest in your experiment notes so the exact input can be identified. Do not treat the data as current market data.

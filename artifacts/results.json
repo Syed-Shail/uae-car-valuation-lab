@@ -3,8 +3,10 @@
   "data": {
     "source_rows": 9953,
     "exact_duplicate_rows_removed": 2248,
-    "eligible_rows": 7705,
-    "excluded_rows": 2248,
+    "below_upstream_price_quality_threshold_rows_removed": 409,
+    "upstream_price_quality_threshold_aed": 5000,
+    "eligible_rows": 7296,
+    "excluded_rows": 2657,
     "sha256": "ebeacfdbcf20c410cf94317f24ac0452f7ce7d86127d67f5cc52d512f2188980",
     "data_file": "dubizzle_cars_dataset.csv",
     "target": "asking price in AED",
@@ -12,15 +14,15 @@
   },
   "split": {
     "seed": 42,
-    "fit_rows": 4623,
-    "calibration_rows": 1541,
-    "test_rows": 1541,
+    "fit_rows": 4377,
+    "calibration_rows": 1459,
+    "test_rows": 1460,
     "method": "random row split; exact duplicate rows removed before split"
   },
   "model": {
     "name": "CatBoostRegressor",
-    "target_transform": "AED asking price (raw scale)",
-    "objective": "MAE",
+    "target_transform": "log1p(AED asking price)",
+    "objective": "RMSE",
     "features": [
       "brand",
       "model",
@@ -59,11 +61,11 @@
       "seller_type"
     ],
     "best_params": {
-      "depth": 9,
-      "learning_rate": 0.04,
-      "l2_leaf_reg": 7
+      "depth": 7,
+      "learning_rate": 0.05,
+      "l2_leaf_reg": 5
     },
-    "iterations": 1098,
+    "iterations": 1399,
     "excluded_columns": [
       "vehicle_age_years (redundant with year in this snapshot)",
       "address/location coordinates (identifier-like, privacy and generalization concerns)",
@@ -74,51 +76,7 @@
     ],
     "validation_candidates": [
       {
-        "validation_mae_aed": 54652.920013019975,
-        "params": {
-          "depth": 9,
-          "learning_rate": 0.04,
-          "l2_leaf_reg": 7,
-          "objective": "MAE",
-          "log_target": false
-        },
-        "iterations": 1098
-      },
-      {
-        "validation_mae_aed": 55579.40574244882,
-        "params": {
-          "depth": 7,
-          "learning_rate": 0.05,
-          "l2_leaf_reg": 5,
-          "objective": "MAE",
-          "log_target": false
-        },
-        "iterations": 926
-      },
-      {
-        "validation_mae_aed": 55906.24641663727,
-        "params": {
-          "depth": 6,
-          "learning_rate": 0.06,
-          "l2_leaf_reg": 8,
-          "objective": "MAE",
-          "log_target": false
-        },
-        "iterations": 1353
-      },
-      {
-        "validation_mae_aed": 60452.763572529046,
-        "params": {
-          "depth": 9,
-          "learning_rate": 0.04,
-          "l2_leaf_reg": 7,
-          "objective": "RMSE",
-          "log_target": true
-        },
-        "iterations": 1395
-      },
-      {
-        "validation_mae_aed": 61610.72824103542,
+        "validation_mae_aed": 31747.222221240816,
         "params": {
           "depth": 7,
           "learning_rate": 0.05,
@@ -126,16 +84,60 @@
           "objective": "RMSE",
           "log_target": true
         },
-        "iterations": 1394
+        "iterations": 1399
       },
       {
-        "validation_mae_aed": 62328.96488225535,
+        "validation_mae_aed": 31933.499253279828,
         "params": {
           "depth": 6,
           "learning_rate": 0.06,
           "l2_leaf_reg": 8,
           "objective": "RMSE",
           "log_target": true
+        },
+        "iterations": 1399
+      },
+      {
+        "validation_mae_aed": 32881.01440599292,
+        "params": {
+          "depth": 9,
+          "learning_rate": 0.04,
+          "l2_leaf_reg": 7,
+          "objective": "RMSE",
+          "log_target": true
+        },
+        "iterations": 1399
+      },
+      {
+        "validation_mae_aed": 33922.306969629324,
+        "params": {
+          "depth": 6,
+          "learning_rate": 0.06,
+          "l2_leaf_reg": 8,
+          "objective": "MAE",
+          "log_target": false
+        },
+        "iterations": 1361
+      },
+      {
+        "validation_mae_aed": 34040.856651767026,
+        "params": {
+          "depth": 7,
+          "learning_rate": 0.05,
+          "l2_leaf_reg": 5,
+          "objective": "MAE",
+          "log_target": false
+        },
+        "iterations": 762
+      },
+      {
+        "validation_mae_aed": 34388.38187594847,
+        "params": {
+          "depth": 9,
+          "learning_rate": 0.04,
+          "l2_leaf_reg": 7,
+          "objective": "MAE",
+          "log_target": false
         },
         "iterations": 1397
       }
@@ -143,136 +145,142 @@
   },
   "baseline": {
     "name": "training median by brand + model; global median fallback",
-    "mae_aed": 86520.19824789098,
-    "median_ae_aed": 38562.5,
-    "rmse_aed": 158521.27091889046,
-    "r2": 0.29204963897299197,
-    "within_10pct": 0.17715768981181051,
-    "within_20pct": 0.31148604802076574,
-    "n": 1541
+    "mae_aed": 76590.12671232877,
+    "median_ae_aed": 37099.5,
+    "rmse_aed": 135892.25674473026,
+    "r2": 0.47950374687268627,
+    "mape": 0.6731999768715767,
+    "median_ape": 0.3505564387917329,
+    "wape": 0.4440669152574837,
+    "within_10pct": 0.1678082191780822,
+    "within_20pct": 0.31643835616438354,
+    "n": 1460
   },
   "test": {
     "model": {
-      "mae_aed": 50713.72602180581,
-      "median_ae_aed": 16187.500708470201,
-      "rmse_aed": 122680.40336936417,
-      "r2": 0.5759880398459365,
-      "within_10pct": 0.3036988968202466,
-      "within_20pct": 0.536015574302401,
-      "n": 1541,
-      "conformal_90_coverage": 0.9214795587280986,
-      "conformal_90_radius_aed": 130160.37923811775,
-      "conformal_90_median_width_aed": 260320.7584762355,
-      "price_band_conformal_90_coverage": 0.9247242050616483
+      "mae_aed": 33354.59697338163,
+      "median_ae_aed": 12914.024981055732,
+      "rmse_aed": 73077.78318563211,
+      "r2": 0.8494783692920965,
+      "mape": 0.2069724299876791,
+      "median_ape": 0.14519535775538833,
+      "wape": 0.19338880379789133,
+      "within_10pct": 0.363013698630137,
+      "within_20pct": 0.6397260273972603,
+      "n": 1460,
+      "conformal_90_coverage": 0.9102739726027397,
+      "conformal_90_radius_aed": 81852.31716502414,
+      "conformal_90_median_width_aed": 163704.63433004828,
+      "price_band_conformal_90_coverage": 0.8965753424657534
     },
-    "mae_improvement_over_baseline": 0.41385101919779743,
-    "mae_improvement_aed": 35806.47222608517,
+    "mae_improvement_over_baseline": 0.5645052645145642,
+    "mae_improvement_aed": 43235.52973894714,
     "paired_bootstrap_95pct_ci_mae_improvement_aed": [
-      31291.202063440745,
-      40459.98362379941
+      38410.55463520444,
+      47890.37787126774
     ],
     "bootstrap_replicates": 2000,
     "segment_metrics": {
       "city": {
         "Abu Dhabi": {
-          "n": 120,
-          "model_mae_aed": 23163.20321992187,
-          "baseline_mae_aed": 57480.7875
+          "n": 109,
+          "model_mae_aed": 18861.217292056954,
+          "baseline_mae_aed": 61828.422018348625
         },
         "Dubai": {
-          "n": 1299,
-          "model_mae_aed": 56083.91147217616,
-          "baseline_mae_aed": 91991.77636643572
+          "n": 1215,
+          "model_mae_aed": 36033.762884160504,
+          "baseline_mae_aed": 81003.84814814814
         },
         "Sharjah": {
-          "n": 99,
-          "model_mae_aed": 22640.202465886407,
-          "baseline_mae_aed": 60766.29797979798
+          "n": 107,
+          "model_mae_aed": 20302.77934751157,
+          "baseline_mae_aed": 47554.69626168224
         }
       },
       "seller_type": {
         "Dealer": {
-          "n": 988,
-          "model_mae_aed": 60733.35392961184,
-          "baseline_mae_aed": 98697.88461538461
+          "n": 933,
+          "model_mae_aed": 35043.071883664736,
+          "baseline_mae_aed": 80166.67148981779
         },
         "Dealership/Certified Pre-Owned": {
-          "n": 46,
-          "model_mae_aed": 61563.058296853036,
-          "baseline_mae_aed": 104104.69565217392
+          "n": 39,
+          "model_mae_aed": 66023.53663340778,
+          "baseline_mae_aed": 105350.26923076923
         },
         "Owner": {
-          "n": 507,
-          "model_mae_aed": 30203.939714972406,
-          "baseline_mae_aed": 61193.88461538462
+          "n": 488,
+          "model_mae_aed": 27515.589313473523,
+          "baseline_mae_aed": 67453.72950819672
         }
       },
       "price_band": {
         "<=50k": {
-          "n": 472,
-          "model_mae_aed": 40661.85812232392,
-          "baseline_mae_aed": 60764.19279661017
+          "n": 361,
+          "model_mae_aed": 8003.578259370971,
+          "baseline_mae_aed": 34069.40581717451
         },
         "50-100k": {
-          "n": 361,
-          "model_mae_aed": 15962.69681677117,
-          "baseline_mae_aed": 39343.68559556787
+          "n": 358,
+          "model_mae_aed": 12510.900120839004,
+          "baseline_mae_aed": 38794.55027932961
         },
         "100-250k": {
-          "n": 424,
-          "model_mae_aed": 32914.23778480287,
-          "baseline_mae_aed": 60631.82900943396
+          "n": 454,
+          "model_mae_aed": 26465.63199133308,
+          "baseline_mae_aed": 67605.02202643172
         },
         "250-500k": {
-          "n": 186,
-          "model_mae_aed": 56468.761972580425,
-          "baseline_mae_aed": 132958.63709677418
+          "n": 191,
+          "model_mae_aed": 69871.23328022419,
+          "baseline_mae_aed": 143746.35340314137
         },
         ">500k": {
-          "n": 98,
-          "model_mae_aed": 293225.4557893376,
-          "baseline_mae_aed": 408220.9591836735
+          "n": 96,
+          "model_mae_aed": 166340.78235058187,
+          "baseline_mae_aed": 286310.90625
         }
       }
     }
   },
   "calibration": {
     "method": "90% split-conformal absolute residual intervals calibrated within model-predicted price bands on a separate 20% split",
-    "global_radius_aed": 130160.37923811775,
+    "global_radius_aed": 81852.31716502414,
     "predicted_price_band_intervals": {
       "<=50k": {
-        "radius_aed": 19288.876823293576,
-        "calibration_n": 335,
-        "test_n": 355,
-        "test_coverage": 0.9323943661971831,
+        "radius_aed": 14446.155230699434,
+        "calibration_n": 375,
+        "test_n": 342,
+        "test_coverage": 0.8947368421052632,
         "interval_source": "price-band calibration set"
       },
       "50-100k": {
-        "radius_aed": 39574.5574990881,
-        "calibration_n": 382,
-        "test_n": 412,
-        "test_coverage": 0.9199029126213593,
+        "radius_aed": 26586.49366019651,
+        "calibration_n": 368,
+        "test_n": 378,
+        "test_coverage": 0.8915343915343915,
         "interval_source": "price-band calibration set"
       },
       "100-250k": {
-        "radius_aed": 112336.41750001421,
-        "calibration_n": 497,
-        "test_n": 467,
-        "test_coverage": 0.9336188436830836,
+        "radius_aed": 61865.60327712505,
+        "calibration_n": 425,
+        "test_n": 461,
+        "test_coverage": 0.9067245119305857,
         "interval_source": "price-band calibration set"
       },
       "250-500k": {
-        "radius_aed": 394442.3826299674,
-        "calibration_n": 272,
-        "test_n": 251,
-        "test_coverage": 0.9083665338645418,
+        "radius_aed": 156351.32687106926,
+        "calibration_n": 200,
+        "test_n": 197,
+        "test_coverage": 0.9035532994923858,
         "interval_source": "price-band calibration set"
       },
       ">500k": {
-        "radius_aed": 564612.6062179775,
-        "calibration_n": 55,
-        "test_n": 56,
-        "test_coverage": 0.9107142857142857,
+        "radius_aed": 258946.69241335941,
+        "calibration_n": 91,
+        "test_n": 82,
+        "test_coverage": 0.8536585365853658,
         "interval_source": "price-band calibration set"
       }
     },
@@ -281,79 +289,79 @@
   "feature_importance": [
     {
       "feature": "brand",
-      "importance": 13.481894298215368
+      "importance": 20.24947982840629
     },
     {
       "feature": "year",
-      "importance": 13.101429066916337
-    },
-    {
-      "feature": "horsepower",
-      "importance": 12.136068338645087
-    },
-    {
-      "feature": "model",
-      "importance": 10.834785596750978
+      "importance": 19.49175812989475
     },
     {
       "feature": "kilometers",
-      "importance": 10.358429074268464
+      "importance": 17.46466872150655
     },
     {
-      "feature": "regional_specs",
-      "importance": 4.663076716451591
+      "feature": "horsepower",
+      "importance": 9.463053507586073
     },
     {
-      "feature": "engine_capacity_cc",
-      "importance": 4.277514533342058
-    },
-    {
-      "feature": "body_type",
-      "importance": 4.031003600107468
-    },
-    {
-      "feature": "interior_color",
-      "importance": 4.020832268593878
+      "feature": "model",
+      "importance": 7.002139175116296
     },
     {
       "feature": "no_of_cylinders",
-      "importance": 3.9646457585345862
+      "importance": 6.2956150485857965
     },
     {
-      "feature": "warranty",
-      "importance": 3.3982483657979343
+      "feature": "engine_capacity_cc",
+      "importance": 3.348609570470367
     },
     {
-      "feature": "trim",
-      "importance": 3.3229897359371954
+      "feature": "body_type",
+      "importance": 3.065109135443753
     },
     {
-      "feature": "exterior_color",
-      "importance": 3.1304575203352223
+      "feature": "regional_specs",
+      "importance": 2.8167328507041502
     },
     {
       "feature": "seller_type",
-      "importance": 2.4110004043338105
+      "importance": 2.4924105100973386
     },
     {
-      "feature": "fuel_type",
-      "importance": 1.7980730120988349
+      "feature": "interior_color",
+      "importance": 1.4240718252238462
+    },
+    {
+      "feature": "warranty",
+      "importance": 1.28190548741028
+    },
+    {
+      "feature": "trim",
+      "importance": 1.256500471859561
     },
     {
       "feature": "doors",
-      "importance": 1.7681143825159829
+      "importance": 1.0753391068424791
+    },
+    {
+      "feature": "fuel_type",
+      "importance": 1.0063687736479807
+    },
+    {
+      "feature": "exterior_color",
+      "importance": 0.820912019625285
     },
     {
       "feature": "seating_capacity",
-      "importance": 1.6947281909620522
-    },
-    {
-      "feature": "city",
-      "importance": 1.5247689016525843
+      "importance": 0.5780925940673296
     },
     {
       "feature": "transmission_type",
-      "importance": 0.08194023454042945
+      "importance": 0.4473153073899665
+    },
+    {
+      "feature": "city",
+      "importance": 0.41991793612211625
     }
   ],
   "limitations": [

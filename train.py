@@ -17,6 +17,7 @@ SEED = 42
 TARGET = "price"
 PRICE_BAND_EDGES = [0, 50_000, 100_000, 250_000, 500_000, float("inf")]
 PRICE_BAND_LABELS = ["<=50k", "50-100k", "100-250k", "250-500k", ">500k"]
+MIN_PRICE_AED = 5_000
 CATEGORICAL = ["brand", "model", "trim", "regional_specs", "body_type", "fuel_type", "transmission_type", "engine_capacity_cc", "horsepower", "exterior_color", "interior_color", "warranty", "city", "seller_type"]
 NUMERIC = ["year", "kilometers", "doors", "seating_capacity", "no_of_cylinders"]
 FEATURES = CATEGORICAL + NUMERIC
@@ -28,13 +29,16 @@ def read_data() -> tuple[pd.DataFrame, dict]:
     sha = hashlib.sha256(DATA.read_bytes()).hexdigest()
     df = pd.read_csv(DATA, low_memory=False)
     start = len(df)
-    # Only enforce basic physical/target validity. Keep legitimate expensive/old/high-mileage vehicles.
+    # The upstream dataset's published analysis labels prices below AED 5,000
+    # as wrong/fake and removes them. Apply that documented target-quality rule;
+    # keep the rest of the observed price range rather than trimming statistical tails.
     df[TARGET] = pd.to_numeric(df[TARGET], errors="coerce")
     df["year"] = pd.to_numeric(df["year"], errors="coerce")
     df["kilometers"] = pd.to_numeric(df["kilometers"], errors="coerce")
     duplicate_rows=int(df.duplicated().sum())
     df = df.drop_duplicates()
-    df = df[df[TARGET].between(1_000, 2_000_000) & df["year"].between(1950, date.today().year) & df["kilometers"].ge(0)].copy()
+    low_price_rows=int((df[TARGET] < MIN_PRICE_AED).sum())
+    df = df[df[TARGET].between(MIN_PRICE_AED, 2_000_000) & df["year"].between(1950, date.today().year) & df["kilometers"].ge(0)].copy()
     df["year"] = df["year"].astype(int)
     df["kilometers"] = df["kilometers"].astype(float)
     # Avoid leakage or identifiers unavailable/unstable at quote time; age is derivable from year and snapshot year.
@@ -45,7 +49,10 @@ def read_data() -> tuple[pd.DataFrame, dict]:
         if col not in df: df[col] = np.nan
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df.dropna(subset=[TARGET, "year", "kilometers"])
-    info = {"source_rows": start, "exact_duplicate_rows_removed": duplicate_rows, "eligible_rows": len(df), "excluded_rows": start-len(df), "sha256": sha,
+    info = {"source_rows": start, "exact_duplicate_rows_removed": duplicate_rows,
+            "below_upstream_price_quality_threshold_rows_removed": low_price_rows,
+            "upstream_price_quality_threshold_aed": MIN_PRICE_AED,
+            "eligible_rows": len(df), "excluded_rows": start-len(df), "sha256": sha,
             "data_file": DATA.name, "target": "asking price in AED", "snapshot_date": "2026-10-19"}
     return df.reset_index(drop=True), info
 
@@ -55,13 +62,15 @@ def metrics(y, pred):
     pct = np.abs(pred-y) / np.maximum(y, 1)
     return {"mae_aed": float(mean_absolute_error(y,pred)), "median_ae_aed": float(median_absolute_error(y,pred)),
             "rmse_aed": float(np.sqrt(mean_squared_error(y,pred))), "r2": float(r2_score(y,pred)),
+            "mape": float(np.mean(pct)), "median_ape": float(np.median(pct)),
+            "wape": float(np.abs(pred-y).sum() / np.maximum(np.abs(y).sum(), 1)),
             "within_10pct": float(np.mean(pct <= .10)), "within_20pct": float(np.mean(pct <= .20))}
 
 
 def main():
     OUT.mkdir(exist_ok=True)
     df, data_info = read_data()
-    # Split rows once into 60% model fit, 20% interval calibration, 20% final untouched test.
+    # Split the screened rows once into 60% model fit, 20% interval calibration, 20% final test.
     idx = np.arange(len(df))
     fit_idx, rest_idx = train_test_split(idx, test_size=.40, random_state=SEED)
     cal_idx, test_idx = train_test_split(rest_idx, test_size=.50, random_state=SEED)

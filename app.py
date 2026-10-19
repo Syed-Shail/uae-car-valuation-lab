@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from catboost import CatBoostRegressor
+from train import read_data
 
 ROOT=Path(__file__).resolve().parent
 ART=ROOT/"artifacts"
@@ -34,7 +35,10 @@ h1,h2,h3{font-family:Manrope,sans-serif;letter-spacing:-.04em;color:#000!importa
 @st.cache_data
 def load_results(version=None): return json.loads((ART/"results.json").read_text())
 @st.cache_data
-def load_data(): return pd.read_csv(DATA,low_memory=False)
+def load_data():
+    if not DATA.exists():
+        raise FileNotFoundError(DATA)
+    return read_data()[0]
 @st.cache_resource
 def load_model():
     m=CatBoostRegressor();m.load_model(str(ART/"price_model.cbm"));return m
@@ -61,14 +65,14 @@ try: df=load_data()
 except Exception:
     st.error("Raw source data is missing. Follow data/README.md and run `python fetch_data.py`.");st.stop()
 res=load_results((ART/"results.json").stat().st_mtime_ns);model=load_model();test=res["test"]["model"]
-st.markdown("<div class='hero'><div class='eyebrow'>FIELD NOTES 01 · UAE USED-CAR MARKET</div><h1>What might this car be listed for?</h1><p>A data-backed estimate from 9,953 UAE vehicle listings. Explore the held-out evaluation, then try a configuration. Estimates describe historical asking prices, not completed sales or today's market.</p></div>",unsafe_allow_html=True)
-st.markdown("<div class='eyebrow'>MODEL SCORE · UNTOUCHED TEST SET</div>",unsafe_allow_html=True)
+st.markdown(f"<div class='hero'><div class='eyebrow'>FIELD NOTES 01 · UAE USED-CAR MARKET</div><h1>What might this car be listed for?</h1><p>Trained on {res['data']['eligible_rows']:,} eligible listings from a 9,953-row UAE snapshot. Explore the held-out evaluation, then try a configuration. Estimates describe historical asking prices, not completed sales or today's market.</p></div>",unsafe_allow_html=True)
+st.markdown("<div class='eyebrow'>MODEL SCORE · HELD-OUT TEST SET</div>",unsafe_allow_html=True)
 c1,c2,c3,c4=st.columns(4)
 c1.metric("Median absolute error",f"AED {test['median_ae_aed']:,.0f}")
 c2.metric("Mean absolute error",f"AED {test['mae_aed']:,.0f}",f"{res['test']['mae_improvement_over_baseline']:.1%} lower than baseline")
-c3.metric("Within 20% of asking price",f"{test['within_20pct']:.1%}")
-c4.metric("Held-out listings",f"{test['n']:,}")
-st.caption("Evaluation uses a fixed untouched 20% test split. Price ranges are calibrated separately by model-predicted price band; held-out group coverage is shown after each estimate. This does not guarantee coverage for an individual car.")
+c3.metric("Median absolute percentage error",f"{test['median_ape']:.1%}")
+c4.metric("Within 20% of asking price",f"{test['within_20pct']:.1%}")
+st.caption(f"Evaluation uses a fixed 20% held-out split ({test['n']:,} listings). The dataset's published analysis identifies asking prices below AED 5,000 as likely incorrect/fake, so those rows are excluded before splitting. Price ranges are calibrated separately by predicted-price band; group coverage is not an individual guarantee.")
 meaning_tab, calculation_tab=st.tabs(["What the statistics mean", "How they were calculated"])
 with meaning_tab:
     st.markdown(f"""
@@ -78,6 +82,12 @@ For each held-out listing, we took the absolute difference between the model est
 ### Mean absolute error — AED {test['mae_aed']:,.0f}
 This is the average size of the model’s misses in AED, regardless of whether it estimated too high or too low. The make-and-model median baseline had MAE AED {res['baseline']['mae_aed']:,.0f}; the model’s MAE was {res['test']['mae_improvement_over_baseline']:.1%} lower on the same test listings.
 
+### Median absolute percentage error — {test['median_ape']:.1%}
+For each listing, divide its absolute AED error by its asking price, then take the median. Half the test listings had a percentage error below {test['median_ape']:.1%} and half above.
+
+### Mean absolute percentage error — {test['mape']:.1%}
+This averages those per-listing percentage errors. It is sensitive to low asking prices, which is why the source's below-AED-5,000 rows are excluded using its published data-quality rule.
+
 ### Within 20% of asking price — {test['within_20pct']:.1%}
 This is the share of held-out listings where the model estimate was no more than 20% above or below that listing’s asking price. Here, that was {test['within_20pct']:.1%} of the test rows.
 
@@ -85,13 +95,15 @@ This is the share of held-out listings where the model estimate was no more than
 This is the number of listings used to calculate the three scores. They were kept out of model fitting and model selection, so they provide a check on data the model did not train on.
 """)
 with calculation_tab:
-    st.markdown("The calculations below use the model’s predictions and actual asking prices for the same untouched test set. `n` is the number of test listings; `yᵢ` is a listing’s asking price and `ŷᵢ` is the model’s estimate.")
+    st.markdown("The calculations below use the model’s predictions and actual asking prices for the same held-out test set. `n` is the number of test listings; `yᵢ` is a listing’s asking price and `ŷᵢ` is the model’s estimate.")
     st.latex(r"AE_i = |\hat{y}_i - y_i|")
     st.latex(r"MedianAE = median(AE_1, AE_2, \ldots, AE_n)")
     st.latex(r"MAE = \frac{1}{n}\sum_{i=1}^{n}|\hat{y}_i-y_i|")
-    st.latex(r"Within20 = \frac{100}{n}\sum_{i=1}^{n}\mathbf{1}\left(\frac{|\hat{y}_i-y_i|}{y_i}\leq 0.20\right)")
+    st.latex(r"Within20 = \frac{1}{n}\sum_{i=1}^{n}\mathbf{1}\left(\frac{|\hat{y}_i-y_i|}{y_i}\leq 0.20\right)")
+    st.latex(r"MAPE = \frac{1}{n}\sum_{i=1}^{n}\frac{|\hat{y}_i-y_i|}{y_i}")
+    st.latex(r"MdAPE = median\left(\frac{|\hat{y}_i-y_i|}{y_i}\right)")
     st.markdown(f"Here, `yᵢ` is positive for every eligible listing. The baseline predicts the fit-set median asking price for the same make and model, falling back to the overall fit-set median when that combination is absent. MAE improvement is `(baseline MAE − model MAE) / baseline MAE`, which is {res['test']['mae_improvement_over_baseline']:.1%} here.")
-    st.caption(f"The source snapshot had {res['data']['source_rows']:,} rows. After exact duplicates and invalid target/year/mileage rows were removed, {res['data']['eligible_rows']:,} remained. A fixed seed split assigned {res['split']['fit_rows']:,} to model fitting, {res['split']['calibration_rows']:,} to interval calibration, and {res['split']['test_rows']:,} to the final test set. These scores describe historical asking prices in this snapshot, not completed sale prices or today's market.")
+    st.caption(f"The source snapshot had {res['data']['source_rows']:,} rows. After exact duplicates, {res['data']['below_upstream_price_quality_threshold_rows_removed']:,} rows below the upstream AED {res['data']['upstream_price_quality_threshold_aed']:,} quality threshold, and invalid target/year/mileage rows were removed, {res['data']['eligible_rows']:,} remained. A fixed seed split assigned {res['split']['fit_rows']:,} to model fitting, {res['split']['calibration_rows']:,} to interval calibration, and {res['split']['test_rows']:,} to the final test set. These scores describe historical asking prices in this snapshot, not completed sale prices or today's market.")
 left,right=st.columns([1,1],gap="large")
 with left:
     st.subheader("Try a vehicle")

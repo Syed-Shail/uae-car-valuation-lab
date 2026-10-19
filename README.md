@@ -25,7 +25,7 @@ python train.py
 streamlit run app.py
 ```
 
-The first model run benchmarks three CatBoost configurations and may take a few minutes. It uses seed 42. It removes exact duplicate rows and enforces basic target/physical validity, but avoids arbitrary tail trimming. `vehicle_age_years` is excluded because it is redundant with model year in this snapshot. Address, location labels below city, and coordinates are excluded to reduce identifier-like signals and improve generalization.
+The first model run benchmarks six CatBoost configurations and may take a few minutes. It uses seed 42. In addition to removing exact duplicates, it follows the source notebook's documented data-quality screen: asking prices below AED 5,000 are described there as wrong/fake and excluded. This leaves 7,296 eligible listings from the 9,953-row snapshot. The rule is recorded in `artifacts/results.json`; it does not remove ordinary high-price or mileage tails. `vehicle_age_years` is excluded because it is redundant with model year in this snapshot. Address, location labels below city, and coordinates are excluded to reduce identifier-like signals and improve generalization.
 
 ## Evaluation design
 
@@ -33,14 +33,14 @@ The first model run benchmarks three CatBoost configurations and may take a few 
 - Candidate model settings are ranked on a validation slice inside the fit set; the test set is not used for tuning.
 - Target is `log1p(price)`; outputs and errors are shown in AED.
 - Baseline predicts the fit-set median price for each make/model, falling back to the overall fit-set median.
-- Reported metrics: MAE, median absolute error, RMSE, R², fraction within 10%/20% of asking price, and empirical held-out coverage of the nominal 90% split-conformal interval.
+- Reported metrics: MAE, median absolute error, MAPE, median absolute percentage error, WAPE, RMSE, R², fraction within 10%/20% of asking price, and empirical held-out coverage of the nominal 90% split-conformal interval.
 - Feature importance is predictive attribution, not causal explanation.
 
 ## Snapshot result
 
-On the recorded snapshot, the untouched 1,541-row test split produced **AED 50,714 MAE** and **AED 16,188 median absolute error**. The training-set make/model median baseline had AED 86,520 MAE, so the model's MAE was **41.4% lower**; paired bootstrap 95% CI for the AED MAE improvement: AED 31,291–40,460. The model reached R² 0.576 and landed within 20% of listed price for 53.6% of test rows. The original global 90% conformal interval covered 92.1% of this test set with a radius of AED 130,160 each way. The app now uses separate calibration radii for model-predicted price bands: AED 19,289 (test coverage 93.2%, n=355) at or below AED 50k; AED 39,575 (92.0%, n=412) for AED 50–100k; AED 112,336 (93.4%, n=467) for AED 100–250k; AED 394,442 (90.8%, n=251) for AED 250–500k; and AED 564,613 (91.1%, n=56) above AED 500k. This makes ranges more useful for ordinary cars while showing that high-value estimates remain uncertain. Point-model test MAE is unchanged: intervals describe uncertainty, not improved point accuracy.
+On the screened snapshot, the 1,460-row held-out test set produced **AED 33,355 MAE**, **AED 12,914 median absolute error**, **20.7% MAPE**, **14.5% median absolute percentage error**, and **64.0% of estimates within 20%** of the listed price. The model achieved R² 0.849. The training-set make/model median baseline had AED 76,590 MAE, so the model's MAE was **56.5% lower** on this same test set. The global 90% conformal interval covered 91.0% of the test set with a radius of AED 81,852 each way. Price-band interval radii and held-out coverage were AED 14,446 (89.5%, n=342) at or below AED 50k; AED 26,586 (89.2%, n=378) for AED 50–100k; AED 61,866 (90.7%, n=461) for AED 100–250k; AED 156,351 (90.4%, n=197) for AED 250–500k; and AED 258,947 (85.4%, n=82) above AED 500k. High-value and rare-vehicle estimates remain less certain.
 
-These are held-out listing-price results from this source snapshot. They are not evidence of realized transaction-price accuracy or today's market performance. Exact metrics, split details, snapshot hash, candidate validation scores, and segment breakdowns are in `artifacts/results.json`.
+These are held-out listing-price results after the documented below-AED-5,000 quality screen. They are not evidence of realized transaction-price accuracy or today's market performance. Exact metrics, split details, snapshot hash, candidate validation scores, and segment breakdowns are in `artifacts/results.json`.
 
 ## Reproducibility and data terms
 
