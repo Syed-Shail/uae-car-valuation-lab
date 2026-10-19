@@ -62,6 +62,29 @@ c2.metric("Mean absolute error",f"AED {test['mae_aed']:,.0f}",f"{res['test']['ma
 c3.metric("Within 20% of asking price",f"{test['within_20pct']:.1%}")
 c4.metric("Held-out listings",f"{test['n']:,}")
 st.caption("Evaluation uses a fixed untouched 20% test split. Price ranges are calibrated separately by model-predicted price band; held-out group coverage is shown after each estimate. This does not guarantee coverage for an individual car.")
+meaning_tab, calculation_tab=st.tabs(["What the statistics mean", "How they were calculated"])
+with meaning_tab:
+    st.markdown(f"""
+### Median absolute error — AED {test['median_ae_aed']:,.0f}
+For each held-out listing, we took the absolute difference between the model estimate and the listed asking price. The median of those differences is AED {test['median_ae_aed']:,.0f}: half the test listings had a smaller absolute error and half had a larger one. The median is less affected by a few very large misses.
+
+### Mean absolute error — AED {test['mae_aed']:,.0f}
+This is the average size of the model’s misses in AED, regardless of whether it estimated too high or too low. The make-and-model median baseline had MAE AED {res['baseline']['mae_aed']:,.0f}; the model’s MAE was {res['test']['mae_improvement_over_baseline']:.1%} lower on the same test listings.
+
+### Within 20% of asking price — {test['within_20pct']:.1%}
+This is the share of held-out listings where the model estimate was no more than 20% above or below that listing’s asking price. Here, that was {test['within_20pct']:.1%} of the test rows.
+
+### Held-out listings — {test['n']:,}
+This is the number of listings used to calculate the three scores. They were kept out of model fitting and model selection, so they provide a check on data the model did not train on.
+""")
+with calculation_tab:
+    st.markdown("The calculations below use the model’s predictions and actual asking prices for the same untouched test set. `n` is the number of test listings; `yᵢ` is a listing’s asking price and `ŷᵢ` is the model’s estimate.")
+    st.latex(r"AE_i = |\hat{y}_i - y_i|")
+    st.latex(r"MedianAE = median(AE_1, AE_2, \ldots, AE_n)")
+    st.latex(r"MAE = \frac{1}{n}\sum_{i=1}^{n}|\hat{y}_i-y_i|")
+    st.latex(r"Within20 = \frac{100}{n}\sum_{i=1}^{n}\mathbf{1}\left(\frac{|\hat{y}_i-y_i|}{y_i}\leq 0.20\right)")
+    st.markdown(f"Here, `yᵢ` is positive for every eligible listing. The baseline predicts the fit-set median asking price for the same make and model, falling back to the overall fit-set median when that combination is absent. MAE improvement is `(baseline MAE − model MAE) / baseline MAE`, which is {res['test']['mae_improvement_over_baseline']:.1%} here.")
+    st.caption(f"The source snapshot had {res['data']['source_rows']:,} rows. After exact duplicates and invalid target/year/mileage rows were removed, {res['data']['eligible_rows']:,} remained. A fixed seed split assigned {res['split']['fit_rows']:,} to model fitting, {res['split']['calibration_rows']:,} to interval calibration, and {res['split']['test_rows']:,} to the final test set. These scores describe historical asking prices in this snapshot, not completed sale prices or today's market.")
 left,right=st.columns([1,1],gap="large")
 with left:
     st.subheader("Try a vehicle")
