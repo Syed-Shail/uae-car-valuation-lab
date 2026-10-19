@@ -15,6 +15,8 @@ DATA = ROOT / "data/raw/dubizzle_cars_dataset.csv"
 OUT = ROOT / "artifacts"
 SEED = 42
 TARGET = "price"
+PRICE_BAND_EDGES = [0, 50_000, 100_000, 250_000, 500_000, float("inf")]
+PRICE_BAND_LABELS = ["<=50k", "50-100k", "100-250k", "250-500k", ">500k"]
 CATEGORICAL = ["brand", "model", "trim", "regional_specs", "body_type", "fuel_type", "transmission_type", "engine_capacity_cc", "horsepower", "exterior_color", "interior_color", "warranty", "city", "seller_type"]
 NUMERIC = ["year", "kilometers", "doors", "seating_capacity", "no_of_cylinders"]
 FEATURES = CATEGORICAL + NUMERIC
@@ -104,9 +106,33 @@ def main():
     test_raw=model.predict(test_df[FEATURES])
     pred=np.maximum(1,np.expm1(test_raw) if log_target else test_raw)
     y=test_df[TARGET].to_numpy()
+    cal_bands=pd.cut(cal_pred, bins=PRICE_BAND_EDGES, labels=PRICE_BAND_LABELS, include_lowest=True)
+    test_bands=pd.cut(pred, bins=PRICE_BAND_EDGES, labels=PRICE_BAND_LABELS, include_lowest=True)
+    tier_intervals={}
+    tier_radii={}
+    for band in PRICE_BAND_LABELS:
+        cal_mask=np.asarray(cal_bands==band)
+        test_mask=np.asarray(test_bands==band)
+        errors=cal_abs[cal_mask]
+        if len(errors)>=30:
+            band_q=min(len(errors)-1, int(np.ceil((len(errors)+1)*.90))-1)
+            band_radius=float(np.sort(errors)[band_q])
+            interval_source="price-band calibration set"
+        else:
+            band_radius=radius
+            interval_source="global fallback (small calibration group)"
+        tier_radii[band]=band_radius
+        tier_intervals[band]={
+            "radius_aed":band_radius,
+            "calibration_n":int(len(errors)),
+            "test_n":int(test_mask.sum()),
+            "test_coverage":float(np.mean(np.abs(y[test_mask]-pred[test_mask])<=band_radius)) if test_mask.any() else None,
+            "interval_source":interval_source,
+        }
     test_metrics=metrics(y,pred)
     test_metrics.update({"n":int(len(y)), "conformal_90_coverage":float(np.mean((y>=pred-radius)&(y<=pred+radius))),
-                         "conformal_90_radius_aed":radius, "conformal_90_median_width_aed":2*radius})
+                         "conformal_90_radius_aed":radius, "conformal_90_median_width_aed":2*radius,
+                         "price_band_conformal_90_coverage":float(np.mean([abs(actual-estimate)<=tier_radii[str(band)] for actual,estimate,band in zip(y,pred,test_bands)]))})
     # Strong transparent baseline: median asking price by make/model, with a training-set median fallback.
     base=fit_df.groupby(["brand","model"])[TARGET].median()
     global_med=float(fit_df[TARGET].median())
@@ -123,7 +149,9 @@ def main():
     model_imp=sorted([{ "feature": f, "importance": float(v)} for f,v in zip(FEATURES,model.get_feature_importance())],key=lambda z:-z["importance"])
     test_output=test_df[["brand","model","year","kilometers","seller_type","city",TARGET]].copy().reset_index(drop=True)
     test_output["prediction_aed"]=pred; test_output["abs_error_aed"]=abs(y-pred)
-    test_output["lower_90_aed"]=np.maximum(0,pred-radius); test_output["upper_90_aed"]=pred+radius
+    test_output["price_band"]=[str(band) for band in test_bands]
+    test_output["interval_radius_aed"]=[tier_radii[str(band)] for band in test_bands]
+    test_output["lower_90_aed"]=np.maximum(0,pred-test_output["interval_radius_aed"].to_numpy()); test_output["upper_90_aed"]=pred+test_output["interval_radius_aed"].to_numpy()
     test_output.to_csv(OUT/"test_predictions.csv",index=False)
     # Report segment metrics only where the held-out sample is not tiny.
     segment_metrics={}
@@ -134,7 +162,7 @@ def main():
             if len(positions)>=30:
                 segment_metrics[col][str(value)]={"n":int(len(positions)),"model_mae_aed":float(mean_absolute_error(y[positions],pred[positions])),"baseline_mae_aed":float(mean_absolute_error(y[positions],baseline[positions]))}
     # Price-band error is useful because absolute error scales with vehicle price.
-    bands=pd.cut(y,bins=[0,50_000,100_000,250_000,500_000,float("inf")],labels=["<=50k","50-100k","100-250k","250-500k",">500k"])
+    bands=pd.cut(y,bins=PRICE_BAND_EDGES,labels=PRICE_BAND_LABELS)
     for band in bands.categories:
         positions=np.where(np.asarray(bands)==band)[0]
         if len(positions)>=30:
@@ -144,7 +172,7 @@ def main():
       "model":{"name":"CatBoostRegressor","target_transform":"log1p(AED asking price)" if log_target else "AED asking price (raw scale)","objective":objective,"features":FEATURES,"categorical_features":CATEGORICAL,"best_params":best_params,"iterations":iterations,"excluded_columns":["vehicle_age_years (redundant with year in this snapshot)","address/location coordinates (identifier-like, privacy and generalization concerns)","latitude","longitude","location_name","area_name"],"validation_candidates":[{"validation_mae_aed":float(mae),"params":p,"iterations":n} for mae,p,n in trials]},
       "baseline":{"name":"training median by brand + model; global median fallback",**baseline_metrics},
       "test":{"model":test_metrics,"mae_improvement_over_baseline":float(improvement),"mae_improvement_aed":float(baseline_metrics["mae_aed"]-test_metrics["mae_aed"]),"paired_bootstrap_95pct_ci_mae_improvement_aed":diff_ci,"bootstrap_replicates":2000,"segment_metrics":segment_metrics},
-      "calibration":{"method":"90% split-conformal absolute residual interval calibrated on separate 20% split","warning":"Marginal coverage applies under exchangeability; it is not a guarantee for individual cars or changed market conditions."},
+      "calibration":{"method":"90% split-conformal absolute residual intervals calibrated within model-predicted price bands on a separate 20% split","global_radius_aed":radius,"predicted_price_band_intervals":tier_intervals,"warning":"Coverage is calibrated within predicted-price bands on exchangeable data. It is not a guarantee for an individual car or changed market conditions; sparse or expensive-car bands remain uncertain."},
       "feature_importance":model_imp,"limitations":["Predicts asking prices, not transaction prices.","One historical listing snapshot; random holdout does not establish future-market performance.","No listing timestamp or outcome field was provided.","Coverage and errors can vary substantially by model, price segment, and data quality."],
       "environment":{"python":platform.python_version(),"pandas":pd.__version__}}
     (OUT/"results.json").write_text(json.dumps(result,indent=2))

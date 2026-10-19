@@ -25,20 +25,20 @@ python train.py
 streamlit run app.py
 ```
 
-The first model run benchmarks six CatBoost configurations and may take a few minutes. It uses seed 42. It removes exact duplicate rows and enforces basic target/physical validity, but avoids arbitrary tail trimming. `vehicle_age_years` is excluded because it is redundant with model year in this snapshot. Address, location labels below city, and coordinates are excluded to reduce identifier-like signals and improve generalization.
+The first model run benchmarks three CatBoost configurations and may take a few minutes. It uses seed 42. It removes exact duplicate rows and enforces basic target/physical validity, but avoids arbitrary tail trimming. `vehicle_age_years` is excluded because it is redundant with model year in this snapshot. Address, location labels below city, and coordinates are excluded to reduce identifier-like signals and improve generalization.
 
 ## Evaluation design
 
 - 60% fit, 20% calibration, and 20% final test rows, using fixed seed 42.
 - Candidate model settings are ranked on a validation slice inside the fit set; the test set is not used for tuning.
-- Candidate models use either raw AED prices or `log1p(price)`; the selected snapshot model uses raw AED prices and MAE loss.
+- Target is `log1p(price)`; outputs and errors are shown in AED.
 - Baseline predicts the fit-set median price for each make/model, falling back to the overall fit-set median.
 - Reported metrics: MAE, median absolute error, RMSE, R², fraction within 10%/20% of asking price, and empirical held-out coverage of the nominal 90% split-conformal interval.
 - Feature importance is predictive attribution, not causal explanation.
 
 ## Snapshot result
 
-On the recorded snapshot, the untouched 1,541-row test split produced **AED 50,714 MAE** and **AED 16,188 median absolute error**. The training-set make/model median baseline had AED 86,520 MAE, so the model's MAE was **41.4% lower**; paired bootstrap 95% CI for the AED MAE improvement: AED 31,291–40,460. The model reached R² 0.576 and landed within 20% of listed price for 53.6% of test rows. The nominal 90% conformal interval covered 92.1% of this test set, but its global radius was AED 130,160 each way, which is too broad to imply precision for an individual estimate. Test-set MAE exceeded AED 293k for vehicles listed above AED 500k, so segment-level uncertainty matters.
+On the recorded snapshot, the untouched 1,541-row test split produced **AED 50,714 MAE** and **AED 16,188 median absolute error**. The training-set make/model median baseline had AED 86,520 MAE, so the model's MAE was **41.4% lower**; paired bootstrap 95% CI for the AED MAE improvement: AED 31,291–40,460. The model reached R² 0.576 and landed within 20% of listed price for 53.6% of test rows. The original global 90% conformal interval covered 92.1% of this test set with a radius of AED 130,160 each way. The app now uses separate calibration radii for model-predicted price bands: AED 19,289 (test coverage 93.2%, n=355) at or below AED 50k; AED 39,575 (92.0%, n=412) for AED 50–100k; AED 112,336 (93.4%, n=467) for AED 100–250k; AED 394,442 (90.8%, n=251) for AED 250–500k; and AED 564,613 (91.1%, n=56) above AED 500k. This makes ranges more useful for ordinary cars while showing that high-value estimates remain uncertain. Point-model test MAE is unchanged: intervals describe uncertainty, not improved point accuracy.
 
 These are held-out listing-price results from this source snapshot. They are not evidence of realized transaction-price accuracy or today's market performance. Exact metrics, split details, snapshot hash, candidate validation scores, and segment breakdowns are in `artifacts/results.json`.
 
@@ -48,4 +48,4 @@ Read [`data/README.md`](data/README.md) before downloading or republishing data.
 
 ## Limitations and responsible use
 
-The source gives no listing collection timestamps, outcomes, or detailed sampling methodology. A random split can contain similar vehicles across fit and test; it does not simulate a future-time deployment. Data is concentrated in Dubai and some makes/models are sparse. The global conformal radius provides marginal calibration only under exchangeability; coverage may vary by segment and is not an individual guarantee. Prices can reflect errors, negotiation strategy, condition, accident history, service history, and other omitted information. Treat estimates as exploratory decision support and verify against current comparable listings and a vehicle inspection.
+The source gives no listing collection timestamps, outcomes, or detailed sampling methodology. A random split can contain similar vehicles across fit and test; it does not simulate a future-time deployment. Data is concentrated in Dubai and some makes/models are sparse. Price-band calibration gives group-level coverage under exchangeability, not an individual guarantee or protection against changed market conditions. The >AED 500k calibration group has only 55 rows. Prices can reflect errors, negotiation strategy, condition, accident history, service history, and other omitted information. Treat estimates as exploratory decision support and verify against current comparable listings and a vehicle inspection.
