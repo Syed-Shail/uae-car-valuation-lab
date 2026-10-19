@@ -25,13 +25,13 @@ python train.py
 streamlit run app.py
 ```
 
-The first model run benchmarks three CatBoost configurations and may take a few minutes. It uses seed 42. It removes exact duplicate rows and enforces basic target/physical validity, but avoids arbitrary tail trimming. `vehicle_age_years` is excluded because it is redundant with model year in this snapshot. Address, location labels below city, and coordinates are excluded to reduce identifier-like signals and improve generalization.
+The first model run benchmarks six CatBoost configurations and may take a few minutes. It uses seed 42. It removes exact duplicate rows and enforces basic target/physical validity, but avoids arbitrary tail trimming. `vehicle_age_years` is excluded because it is redundant with model year in this snapshot. Address, location labels below city, and coordinates are excluded to reduce identifier-like signals and improve generalization.
 
 ## Evaluation design
 
 - 60% fit, 20% calibration, and 20% final test rows, using fixed seed 42.
 - Candidate model settings are ranked on a validation slice inside the fit set; the test set is not used for tuning.
-- Target is `log1p(price)`; outputs and errors are shown in AED.
+- Candidate models use either raw AED prices or `log1p(price)`; the selected snapshot model uses raw AED prices and MAE loss.
 - Baseline predicts the fit-set median price for each make/model, falling back to the overall fit-set median.
 - Reported metrics: MAE, median absolute error, RMSE, R², fraction within 10%/20% of asking price, and empirical held-out coverage of the nominal 90% split-conformal interval.
 - Feature importance is predictive attribution, not causal explanation.
